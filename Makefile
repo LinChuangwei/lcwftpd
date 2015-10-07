@@ -1,11 +1,16 @@
-CC=g++
-CFLAGS=-Wall -g
-BIN=lcwftpd
-OBJS=main.o 
-$(BIN):$(OBJS)
-	$(CC) $(CFLAGS) $^ -o $@ 
-%.o:%.cpp
-	$(CC) $(CFLAGS) -c $< -o $@
+#目标
+TARGET=lcwftpd
+SOURCES=$(wildcard *.cpp)
+OBJS=$(patsubst %.cpp,%.o,$(SOURCES))
+CXX=g++
+CFLAGS=-Wall -g -std=c++11
+#LIBS=-lcrypt
+
+$(TARGET):$(OBJS)
+	$(CXX) $(CFLAGS) $^ -o $@ 
+.cpp.o:
+	$(CXX) $(CFLAGS) -c $< -o $@
+
 .PHONY:clean
 clean:
 	rm -f *.o $(BIN)

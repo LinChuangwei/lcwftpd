@@ -1,9 +1,10 @@
-#ifndef LCWFTPD_HEADFILE_H_
-#define LCWFTPD_HEADFILE_H_
 //start from the very beginning,and to create greatness
 //@author: Chuangwei Lin
 //@E-mail：979951191@qq.com
 //@brief： lcwftpd主要的库头文件
+
+#ifndef LCWFTPD_HEADFILE_H_
+#define LCWFTPD_HEADFILE_H_
 
 #include <iostream>
 #include <stdarg.h>
@@ -11,15 +12,49 @@
 #include <stdio.h>
 #include <unistd.h>
 #include <sys/types.h>
+#include <sys/types.h>          
+#include <sys/socket.h>
+#include <errno.h>
+#include <netdb.h>
+#include <sys/socket.h>//套接字编程
+#include <netinet/in.h>//地址
+#include <fcntl.h>
+#include <arpa/inet.h>
+#include <string.h>
 
-//定义一个日志宏
+
+/**
+ *会话结构体
+ */
+#define MAX_COMMAND_LINE 1024
+#define MAX_COMMAND 32
+#define MAX_ARG 1024
+typedef struct ftp_session
+{ 
+    //控制连接
+	int ctrl_fd;//已连接套接字
+    char cmdline[MAX_COMMAND_LINE];//命令行
+    char cmd[MAX_COMMAND];//命令
+    char arg[MAX_ARG];//参数
+
+}session_t;
+
+
+
+
+//'\'后面不要加注释
+/**
+ *LCWFTPD_LOG - 日志宏
+ *输出日期，时间，日志级别，源码文件，行号，信息
+ */
+ //定义一个日志宏
 #define DEBUG 0
 #define INFO  1
 #define WARN  2
 #define ERROR 3
 #define CRIT  4 
 
-static const char * LOG_STR[] = { 
+static const char* LOG_STR[] = { 
     "DEBUG",
     "INFO",
     "WARN",
@@ -27,9 +62,6 @@ static const char * LOG_STR[] = {
     "CRIT"
 };
 
-//可变参数 
-//输出日期，时间，日志级别，源码文件，行号，信息
-//'\'后面不要加注释
 #define LCWFTPD_LOG(level, format, ...) do{ \
     if (level >= 0) {\
         time_t now = time(NULL);                      \
