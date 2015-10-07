@@ -1,7 +1,9 @@
-//start from the very beginning,and to create greatness
-//@author: Chuangwei Lin
-//@E-mail：979951191@qq.com
-//@brief：main函数
+/**
+  *start from the very beginning,and to create greatness
+  *@author: LinChuangwei 
+  *@E-mail：979951191@qq.com
+  *@brief：main函数
+  */ 
 #include "lcwftpd_headfile.h"
 #include "lcwftpd_loop.h"
 int main(int argc, char const *argv[])

@@ -1,8 +1,9 @@
-//start from the very beginning,and to create greatness
-//@author: Chuangwei Lin
-//@E-mail：979951191@qq.com
-//@brief： ftp服务进程相关处理函数
-
+/**
+ *start from the very beginning,and to create greatness
+ *@author: LinChuangwei 
+ *@E-mail：979951191@qq.com
+ *@brief：ftp服务进程相关处理函数
+ */
 
 #ifndef FTPPROTO_H_
 #define FTPPROTO_H_

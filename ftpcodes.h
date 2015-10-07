@@ -1,7 +1,9 @@
-//start from the very beginning,and to create greatness
-//@author: Chuangwei Lin
-//@E-mail：979951191@qq.com
-//@brief： FTP响应码集合
+/**
+ *start from the very beginning,and to create greatness
+ *@author: LinChuangwei 
+ *@E-mail：979951191@qq.com
+ *@brief：FTP响应码集合
+ */
 
 #ifndef FTPCODES_H_
 #define FTPCODES_H_

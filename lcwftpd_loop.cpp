@@ -1,7 +1,9 @@
-//start from the very beginning,and to create greatness
-//@author: Chuangwei Lin
-//@E-mail：979951191@qq.com
-//@brief： 主流程类的实现文件
+/**
+ *start from the very beginning,and to create greatness
+ *@author: LinChuangwei 
+ *@E-mail：979951191@qq.com
+ *@brief：ftp主流程类实现文件
+ */
 #include "lcwftpd_loop.h"
 
 lcwftpd_loop::lcwftpd_loop():listenfd(0),conn(0)
@@ -18,6 +20,7 @@ typedef struct ftp_session
 { 
     //控制连接
 	int ctrl_fd;//已连接套接字
+    char ip[16];
     char cmdline[MAX_COMMAND_LINE];//命令行
     char cmd[MAX_COMMAND];//命令
     char arg[MAX_ARG];//参数
@@ -40,7 +43,7 @@ void lcwftpd_loop::lcwftpd_init()
 	lcw_sess =
 	{ 
 		//控制连接
-        -1,{0},{0},{0}		
+        -1,{0},{0},{0},{0}		
 	};
 }	
 /**
@@ -62,8 +65,8 @@ void lcwftpd_loop::lcwftpd_run()
 	    //连接成功后记下ip,ip可以是整数也可以是字符串
 	    //unsigned int ip = addr.sin_addr.s_addr;
 	    //转换成点分十进制的字符串，方便打印。。。。。
-	    char* ip_char = inet_ntoa(addr.sin_addr);
-	    LCWFTPD_LOG(DEBUG,"%s is connecting",ip_char);
+	    char_ip = inet_ntoa(addr.sin_addr);
+	    LCWFTPD_LOG(DEBUG,"%s is connecting",char_ip);
 	    pid = fork();//创建进程
 	    if (-1 == pid)
 	    {//fork失败
@@ -74,6 +77,7 @@ void lcwftpd_loop::lcwftpd_run()
 	    	close(listenfd);//子进程无需处理监听
 	    	//登记已连接的套接字
 	    	lcw_sess.ctrl_fd = conn;
+	    	strcpy(lcw_sess.ip,char_ip);//拷贝ip
 	    	LCWFTPD_LOG(DEBUG,"子进程");
 	    	//子进程开启一个新的会话
 	    	lcw_session.begin_session(&lcw_sess);

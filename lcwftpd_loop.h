@@ -1,7 +1,9 @@
-//start from the very beginning,and to create greatness
-//@author: Chuangwei Lin
-//@E-mail：979951191@qq.com
-//@brief： 主流程类头文件
+/**
+ *start from the very beginning,and to create greatness
+ *@author: LinChuangwei 
+ *@E-mail：979951191@qq.com
+ *@brief：主流程类头文件
+ */
 #ifndef LCWFTPD_LOOP_H_
 #define LCWFTPD_LOOP_H_
 #include "lcwftpd_headfile.h"
@@ -21,6 +23,7 @@ private:
 	 int listenfd;//监听套接字 
 	 int conn;//已连接套接字
 	 pid_t pid;//进程pid
+	 char* char_ip;//用于保存字符串ip
 	 session_t lcw_sess;//定义一个会话结构体
 };
 

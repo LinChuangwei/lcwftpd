@@ -1,7 +1,9 @@
-//start from the very beginning,and to create greatness
-//@author: Chuangwei Lin
-//@E-mail：979951191@qq.com
-//@brief： 系统工具类实现
+/**
+  *start from the very beginning,and to create greatness
+  *@author: LinChuangwei 
+  *@E-mail：979951191@qq.com
+  *@brief：系统工具类实现
+  */ 
 
 #include "systools.h"
 /**
@@ -128,7 +130,7 @@ int systools::accept_timeout(int fd,struct sockaddr_in* addr,unsigned int wait_s
 }
 
 /**
- *writen - 向fd写入定长的数据
+ *writen - 向fd写入buf中定长的数据
  *@fd:文件描述符
  *@buf:缓冲区
  *@count:要写入的长度
@@ -153,4 +155,103 @@ ssize_t systools::writen(int fd, const void* buf, size_t count)
 		nleft -= nwritten;//更新剩下的长度
 	}
 	return count;
+}
+
+/**
+ *readn - 从fd中读取定长的数据到buf
+ *@fd:文件描述符
+ *@buf:缓冲区
+ *@count:读取长度
+ *成功返回读取长度，失败返回-1
+ */
+ssize_t systools::readn(int fd, void* buf, size_t count)
+{
+	size_t nleft = count;
+	ssize_t nread;
+	char *bufp = (char*)buf;
+	while (nleft > 0) 
+	{
+		if ((nread = read(fd, bufp, nleft)) < 0)//读取nleft长度的数据
+		{
+     		if (errno == EINTR)
+				continue;
+			return -1;
+		}
+		else if (nread == 0) //对方关闭或者已经读到eof
+			return count - nleft;//这里返回的就是实际读取到的长度
+		
+		bufp += nread;//更新读指针
+		nleft -= nread;//更新剩下的长度
+	}
+	
+	return count;
+}
+
+/**
+ *recv_peek - 读取数据到缓冲区buf但是不清除读取缓冲区
+ *@socked:socket套接字，recv()只能读写套接字，而不能是一般的文件描述符  
+ *@buf:缓冲区buf
+ *@len:读取长度
+ *返回其实际copy的字节数
+ */
+ssize_t systools::recv_peek(int sockfd, void* buf, size_t len)
+{
+	while (1)
+	{//MSG_PEEK 查看当前数据,数据将被复制到缓冲区中，但并不从输入队列中删除
+		int ret = recv(sockfd, buf, len, MSG_PEEK); 
+		if (ret == -1 && errno == EINTR)
+			continue;
+		return ret;
+	}
+}
+
+/**
+ *readline - 从sockfd读取一行到buf
+ *@sockfd:socket套接字
+ *@buf:缓冲区
+ *@maxline:一行的最大字符数
+ *成功返回读取到的长度，失败返回-1
+ */
+ssize_t systools::readline(int sockfd, void* buf, size_t maxline)
+{
+//常见的应用层协议都是带有可变长字段的，字段之间的分隔符用换行'\n'的比用'\0'的更常见
+// 读到'\n'就返回，加上'\n' 一行最多为maxline个字符 
+	int ret;
+	int nread;
+	char* bufp = (char*)buf;
+	int nleft = maxline;
+	int count = 0;
+	while (1) 
+	{   //先用recv_peek看一下现在缓冲区有多少个字符并读取到bufp
+		ret = recv_peek(sockfd, bufp, nleft);
+		if (ret < 0)
+			return ret; // 返回小于0表示失败
+		else if (ret == 0)
+			return ret; //返回0表示对方关闭连接了
+		
+		nread = ret;
+		int i;
+		for (i = 0; i < nread; i++)//查看是否存在换行符'\n'
+		{
+			if (bufp[i] == '\n') 
+			{//用readn连同换行符一起读取（清空缓冲区）
+	 			ret = readn(sockfd, bufp, i+1);
+				if (ret != i+1)
+					LCWFTPD_LOG(ERROR,"ret != i+1");
+				return ret + count;
+			}
+		}
+		if (nread > nleft)
+			LCWFTPD_LOG(ERROR,"nread > nleft");
+		nleft -= nread;
+		//如果不存在'\n'(一行还没结束)，就先读取出来，然后循环读取后面的部分
+		ret = readn(sockfd, bufp, nread);
+		if (ret != nread)
+			LCWFTPD_LOG(ERROR,"ret != nread");
+
+		bufp += nread;//读取得指针
+		count += nread;//已经读取的
+	}
+
+	return -1;
 }

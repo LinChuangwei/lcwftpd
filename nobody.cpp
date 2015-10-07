@@ -1,8 +1,9 @@
-//start from the very beginning,and to create greatness
-//@author: Chuangwei Lin
-//@E-mail：979951191@qq.com
-//@brief： nobody进程处理相关的实现文件
-
+/**
+  *start from the very beginning,and to create greatness
+  *@author: LinChuangwei 
+  *@E-mail：979951191@qq.com
+  *@brief：nobody进程处理相关的实现文件
+  */ 
 #include "nobody.h"
 
 /**

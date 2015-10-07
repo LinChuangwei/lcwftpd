@@ -1,7 +1,9 @@
-//start from the very beginning,and to create greatness
-//@author: Chuangwei Lin
-//@E-mail：979951191@qq.com
-//@brief： lcwftpd主要的库头文件
+/**
+  *start from the very beginning,and to create greatness
+  *@author: LinChuangwei 
+  *@E-mail：979951191@qq.com
+  *@brief：lcwftpd主要的库头文件及一些声明
+  */ 
 
 #ifndef LCWFTPD_HEADFILE_H_
 #define LCWFTPD_HEADFILE_H_
@@ -33,6 +35,7 @@ typedef struct ftp_session
 { 
     //控制连接
 	int ctrl_fd;//已连接套接字
+    char ip[16];
     char cmdline[MAX_COMMAND_LINE];//命令行
     char cmd[MAX_COMMAND];//命令
     char arg[MAX_ARG];//参数

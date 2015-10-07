@@ -1,8 +1,9 @@
-//start from the very beginning,and to create greatness
-//@author: Chuangwei Lin
-//@E-mail：979951191@qq.com
-//@brief： ftp服务进程处理实现文件
-
+/**
+ *start from the very beginning,and to create greatness
+ *@author: LinChuangwei 
+ *@E-mail：979951191@qq.com
+ *@brief：ftp服务进程处理实现文件
+ */
 #include "ftpproto.h"
 #include "systools.h"
 /**
@@ -20,6 +21,17 @@ void ftpproto::handle_ftp(session_t* sess)
 		memset(sess->cmdline,0,sizeof(sess->cmdline));
 		memset(sess->cmd,0,sizeof(sess->cmd));
 		memset(sess->arg,0,sizeof(sess->arg));
+		//读取命令到cmdline
+		ret = lcw_systools.readline(sess->ctrl_fd,sess->cmdline,MAX_COMMAND);
+		if (-1 == ret)//读取错误
+		{
+			LCWFTPD_LOG(ERROR,"lcw_systools.readline");
+		}
+		else if (0 == ret)//等于0表示断开了连接	
+		{
+			LCWFTPD_LOG(ERROR,"client %s disconnect",sess->ip);
+		}
+		LCWFTPD_LOG(DEBUG,"cmdline:%s",sess->cmdline);
 	}
 }
 /**

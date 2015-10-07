@@ -1,7 +1,9 @@
-//start from the very beginning,and to create greatness
-//@author: Chuangwei Lin
-//@E-mail：979951191@qq.com
-//@brief： 子进程开启的一个会话，包含nobody进程和ftp服务进程
+/**
+  *start from the very beginning,and to create greatness
+  *@author: LinChuangwei 
+  *@E-mail：979951191@qq.com
+  *@brief：子进程开启的一个会话，包含nobody进程和ftp服务进程
+  */ 
 
 #ifndef SESSION_H_
 #define SESSION_H_ 
