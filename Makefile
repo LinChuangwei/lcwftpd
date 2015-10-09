@@ -4,7 +4,7 @@ SOURCES=$(wildcard *.cpp)
 OBJS=$(patsubst %.cpp,%.o,$(SOURCES))
 CXX=g++
 CFLAGS=-Wall -g -std=c++11 -lcrypt
-#LIBS=-lcrypt
+
 
 $(TARGET):$(OBJS)
 	$(CXX) $(CFLAGS) $^ -o $@ 
@@ -13,4 +13,4 @@ $(TARGET):$(OBJS)
 
 .PHONY:clean
 clean:
-	rm -f *.o $(BIN)
+	rm -f *.o 
