@@ -18,9 +18,10 @@ lcwftpd_loop::~lcwftpd_loop()
 /*
 typedef struct ftp_session
 { 
-    //控制连接
+     //控制连接
+    uid_t uid;//用户id
 	int ctrl_fd;//已连接套接字
-    char ip[16];
+    char ip[16];//ip
     char cmdline[MAX_COMMAND_LINE];//命令行
     char cmd[MAX_COMMAND];//命令
     char arg[MAX_ARG];//参数
@@ -43,7 +44,7 @@ void lcwftpd_loop::lcwftpd_init()
 	lcw_sess =
 	{ 
 		//控制连接
-        -1,{0},{0},{0},{0}		
+        0,-1,{0},{0},{0},{0}		
 	};
 }	
 /**

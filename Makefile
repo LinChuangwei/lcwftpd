@@ -3,7 +3,7 @@ TARGET=lcwftpd
 SOURCES=$(wildcard *.cpp)
 OBJS=$(patsubst %.cpp,%.o,$(SOURCES))
 CXX=g++
-CFLAGS=-Wall -g -std=c++11
+CFLAGS=-Wall -g -std=c++11 -lcrypt
 #LIBS=-lcrypt
 
 $(TARGET):$(OBJS)

@@ -13,8 +13,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <unistd.h>
-#include <sys/types.h>
-#include <sys/types.h>          
+#include <sys/types.h>      
 #include <sys/socket.h>
 #include <errno.h>
 #include <netdb.h>
@@ -23,7 +22,11 @@
 #include <fcntl.h>
 #include <arpa/inet.h>
 #include <string.h>
-
+#include <string>
+#include <map>
+#include <pwd.h>
+#include <shadow.h>
+#include <crypt.h>
 
 /**
  *会话结构体
@@ -34,8 +37,9 @@
 typedef struct ftp_session
 { 
     //控制连接
-	int ctrl_fd;//已连接套接字
-    char ip[16];
+    uid_t uid;//用户id
+	  int ctrl_fd;//已连接套接字
+    char ip[16];//ip
     char cmdline[MAX_COMMAND_LINE];//命令行
     char cmd[MAX_COMMAND];//命令
     char arg[MAX_ARG];//参数
