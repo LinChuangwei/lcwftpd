@@ -9,6 +9,7 @@
 #include "lcwftpd_headfile.h"
 #include "systools.h"
 #include "session.h"
+#include "parseconfig.h"
 
 class lcwftpd_loop
 {
@@ -18,6 +19,7 @@ public:
      void lcwftpd_init();
 	 void lcwftpd_run();
 private:
+	 parseconfig lcwparseconf;//配置文件类
 	 systools lcw_systools;//系统工具类
 	 session lcw_session;//会话类
 	 int listenfd;//监听套接字 

@@ -13,4 +13,5 @@
 void nobody::handle_nobody(session_t* sess)
 {
 	LCWFTPD_LOG(DEBUG,"Hello handle_nobody");
+	while(1);
 }

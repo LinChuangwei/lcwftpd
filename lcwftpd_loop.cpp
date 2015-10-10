@@ -6,7 +6,10 @@
  */
 #include "lcwftpd_loop.h"
 
-lcwftpd_loop::lcwftpd_loop():listenfd(0),conn(0)
+/**
+ *lcwftpd_loop - 构造函数，完成配置文件类初始化
+ */
+lcwftpd_loop::lcwftpd_loop():lcwparseconf(parseconfig::instance()),listenfd(0),conn(0)
 {
 
 }
@@ -40,6 +43,8 @@ void lcwftpd_loop::lcwftpd_init()
 	{
 		LCWFTPD_LOG(ERROR,"lcwftpd must be started as root");
 	}
+	//加载配置文件，完成初始化
+	lcwparseconf.loadfile();
 	//初始化会话结构体
 	lcw_sess =
 	{ 

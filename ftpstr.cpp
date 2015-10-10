@@ -6,6 +6,12 @@
  */
 
 #include "ftpstr.h"
+void ftpstr::fangjinggao()
+{
+	LCWFTPD_LOG(DEBUG,"防警告");
+}
+
+
 /**
  *str_trim_crlf - 去除\r\n
  *@str:要处理的字符串
@@ -40,7 +46,6 @@ void ftpstr::str_split(const char* str,char* left,char* right,char c)
 		strcpy(left,str);//复制左边
 		strcpy(right,p+1);//复制右边
 	}
-	LCWFTPD_LOG(DEBUG,"str_split");
 }
 
 /**
@@ -54,4 +59,26 @@ void ftpstr::str_upper(char* str)
 		*str = toupper(*str);//转化后通过返回值返回
 		str++;
 	}
+}
+
+/**
+ *delspace - 去除字符串首尾的空格
+ *@str:要处理的字符串
+ *返回处理好的字符串
+ */
+char* ftpstr::delspace(char* str)
+{
+	char* end,*sp,*ep;//结尾指针，两个游标
+	size_t len;//用于保存长度长度
+	sp = str;//sp指针首先指向行首
+	end = ep = str + strlen(str) -1;//end指针指向结尾
+	//从行首开始去空格
+	while(sp <= end && isspace(*sp))//是空格返回非零
+		sp++;//移动sp指针直到指向的不是空格
+	//从行尾去除空格
+	while(ep >= sp && isspace(*ep))
+		ep--;
+	len = (ep < sp)? 0 :(ep - sp)+1;//计算长度+1,指向换行符
+	sp[len] = '\0';//换行符置为'\0'
+	return sp;
 }

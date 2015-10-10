@@ -12,7 +12,7 @@
  */
 int systools::getlocalip(char* ip)//暂时这样实现
 {
-	strcpy(ip,"192.168.64.128");
+	strcpy(ip,"192.168.199.170");
 	return 0;
 }
 /**

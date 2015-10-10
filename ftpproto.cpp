@@ -16,9 +16,9 @@ void ftpproto::handle_ftp(session_t* sess)
 	LCWFTPD_LOG(DEBUG,"Hello handle_ftp");
 	ftp_reply(sess,FTP_GREET,"(lcwftpd 1.0 welcome you!!!by LinChuangwei.)");
 	ftp_commands_map_init();//初始化map
+	LCWFTPD_LOG(DEBUG,"打印一下命令");
 	for(it = commandsmap.begin();it != commandsmap.end();it++)
 	{
-		std::cout <<"打印一下命令：\n";
 		std::cout << it->first <<std::endl;
 	}
 	while(1)
@@ -58,6 +58,7 @@ void ftpproto::handle_ftp(session_t* sess)
 		else
 		{
 			LCWFTPD_LOG(DEBUG,"没有执行命令");
+			while(1);
 			ftp_reply(sess,FTP_BADCMD,"Sorry! Unknown command");
 		}
 
@@ -142,10 +143,10 @@ void ftpproto::do_pass(session_t* sess)
 	// active_sigurg(sess->ctrl_fd);
 
 	//登录验证成功后更改工作环境，root->所登录的用户
-	// umask(tunable_local_umask);
-	// setegid(pw->pw_gid);
-	// seteuid(pw->pw_uid);
-	// chdir(pw->pw_dir);
-
+	// umask(tunable_local_umask);//设置默认权限
+	setegid(pw->pw_gid);
+	seteuid(pw->pw_uid);
+	chdir(pw->pw_dir);
+	// 230
 	ftp_reply(sess,FTP_LOGINOK,"Hello~ Login successful,Welcome you!");
 }
