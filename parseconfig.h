@@ -33,8 +33,10 @@ private:
 	//释放内存
 	static void destroy();
 	//一个pasv和port配置的处理函数
-	bool handle_pasv_port(char* value,char* key,int linenumber);
-	
+	bool handle_pasv_port(char* key,char* value,int linenumber);
+	//一个配置unsigned int类型配置项的函数
+	void configuint(char* key,char* value,int linenumber);
+
 	//定义自身单例类
 	static parseconfig* __self;
 	bool pasv_active;//被动模式

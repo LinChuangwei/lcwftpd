@@ -11,7 +11,6 @@ void ftpstr::fangjinggao()
 	LCWFTPD_LOG(DEBUG,"防警告");
 }
 
-
 /**
  *str_trim_crlf - 去除\r\n
  *@str:要处理的字符串
@@ -81,4 +80,36 @@ char* ftpstr::delspace(char* str)
 	len = (ep < sp)? 0 :(ep - sp)+1;//计算长度+1,指向换行符
 	sp[len] = '\0';//换行符置为'\0'
 	return sp;
+}
+
+/**
+ *str_octal_to_uint - 字符串表示的8进制数转换为unsigned int
+ *@str:要处理的字符串
+ *返回转化后的unsigned int类型的数
+ */
+unsigned int ftpstr::str_octal_to_uint(char* str)
+{
+	unsigned int result = 0;
+	int seen_non_zero_digit = 0;//8进制0开头
+	char digit;
+	while(*str)
+	{
+		digit = *str;//取出其中的一位
+		//isdigit检查参数c是否为阿拉伯数字0到9
+		if (!isdigit(digit) || digit > '7')//是不是数字或者大于7
+		{
+			break;
+		}
+		if (digit != '0')//查找到第一个不为0的数
+		{
+			seen_non_zero_digit = 1;
+		}
+		if (seen_non_zero_digit)
+		{
+			result <<= 3;//*8，移位比乘法效率高
+			result += (digit - '0');
+		}
+		str++;
+	}
+	return result;
 }

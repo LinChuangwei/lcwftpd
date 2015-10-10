@@ -79,15 +79,34 @@ int parseconfig::loadfile()
 		{//某些key没有配置value,提示key和行号
 			LCWFTPD_LOG(DEBUG,"missing value in %s for %s locate line %d",CONF_FILE,key,linenumber);
 		}
-		
+		//这里只会在程序执行的时候执行一次，比较次数也不算多，姑且用if else 
 		//strcasecmp忽略大小写比较字符串
-		if (strcasecmp(key, "pasv_enable") == 0) 
+		if(strcasecmp(key, "pasv_enable") == 0)//被动模式
 		{ 
-            pasv_active = handle_pasv_port(value,key,linenumber);
-            std::cout<<"pasv_active:"<<pasv_active<<std::endl;;
-        } 
-		
-
+            pasv_active = handle_pasv_port(key,value,linenumber);
+            LCWFTPD_LOG(DEBUG,"value for pasv_enable is %d",pasv_active);
+        }
+        else if(strcasecmp(key, "port_enable") == 0)//主动模式
+        {
+        	port_active = handle_pasv_port(key,value,linenumber); 
+        	LCWFTPD_LOG(DEBUG,"value for port_enable is %d",port_active);
+        }
+        else if(strcasecmp(key, "local_umask") == 0)//权限掩码
+        {//8进制字符串转化为unsigned int
+        	local_umask = lcwftpstr.str_octal_to_uint(value);
+        	LCWFTPD_LOG(DEBUG,"value for local_umask is %u(Decimal system)",local_umask);
+        }
+        else if(strcasecmp(key, "listen_address") == 0)//ip地址
+        {
+        	listen_address = strdup(value);
+        	LCWFTPD_LOG(DEBUG,"value for listen_address is %s",listen_address);
+        }
+        else
+        {
+            //配置所有unsigned int 类型的命令，这个函数一定要放在最后
+        	//因为如果再匹配不到就认为是不支持的命令
+        	configuint(key,value,linenumber);
+        }
 	}  
 
 
@@ -97,10 +116,12 @@ int parseconfig::loadfile()
 
 /**
  *handle_pasv_port - 一个pasv和port配置的处理函数
+ *@key:key值
  *@value:value值
+ *@linenumber:行号
  *返回解析后的设置布尔值，true或者false
  */
-bool parseconfig::handle_pasv_port(char* value,char* key,int linenumber)
+bool parseconfig::handle_pasv_port(char* key,char* value,int linenumber)
 {
 	 bool trueorfalse;
 	 if (strcasecmp(value,"YES") == 0 || strcasecmp(value,"TRUE") == 0 || 
@@ -115,7 +136,46 @@ bool parseconfig::handle_pasv_port(char* value,char* key,int linenumber)
 	 }
 	 else//没有配置可以使用默认值，配置错了程序最好退出
 	 {
-	  	LCWFTPD_LOG(ERROR,"value in %s for %s locate line %d not support",CONF_FILE,key,linenumber);
+	  	LCWFTPD_LOG(ERROR,"value in %s [line: %d] for %s not support",CONF_FILE,linenumber,key);
 	 }
 	 return trueorfalse;
+}
+
+/**
+ *configuint - 一个配置unsigned int类型配置项的函数
+ *@key:key值
+ *@value:value值
+ *@linenumber:行号
+ */
+void parseconfig::configuint(char* key,char* value,int linenumber)
+{//在这里定义一个key和value的数组，到时候遍历即可，避免写太多的if else
+	struct parseconf_uint_setting
+	{
+		const char* set_key;
+		unsigned int set_value;
+	}
+	parseconfig_uint_array[9] =
+	{
+		{"listen_port",listen_port},
+        {"max_clients",max_clients},
+        {"max_per_ip",max_per_ip},
+        {"accept_timeout",accept_timeout},
+        {"connect_timeout",connect_timeout},
+        {"idle_session_timeout",idle_session_timeout},
+        {"data_connection_timeout",data_connection_timeout},
+        {"upload_max_rate",upload_max_rate},
+        {"download_max_rate",download_max_rate},
+	};
+	int i;
+	for (i = 0; i < 9; ++i)
+	{//key和数组中的每个结构体的第一个成员比较比较
+		if (strcasecmp(key,parseconfig_uint_array[i].set_key) == 0)
+		{
+			parseconfig_uint_array[i].set_value = atoi(value);
+			LCWFTPD_LOG(DEBUG,"value for %s is %u",key,parseconfig_uint_array[i].set_value);
+			return;//找到了就返回
+		}
+	}
+	//不知道的指令
+	LCWFTPD_LOG(ERROR,"Bad directive in %s [line:%d] %s:Unknown directive",CONF_FILE,linenumber,key);
 }
