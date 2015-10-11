@@ -43,6 +43,10 @@ typedef struct ftp_session
     char cmdline[MAX_COMMAND_LINE];//命令行
     char cmd[MAX_COMMAND];//命令
     char arg[MAX_ARG];//参数
+    //数据连接
+    struct sockaddr_in* port_addr;//到时要连接的地址
+    //FTP协议状态
+    int is_ascii;//是否是ascii码状态
 
 }session_t;
 

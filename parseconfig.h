@@ -25,6 +25,21 @@ public:
 	static parseconfig& instance();
 	//加载配置文件将参数存入
 	int loadfile();
+	//一些访问私有成员的接口，有点啰嗦，不妨实现一番
+	bool get_pasv_active();
+	bool get_port_active();
+	unsigned int get_listen_port();
+	unsigned int get_max_clients();
+	unsigned int get_max_per_ip();
+	unsigned int get_accept_timeout();
+	unsigned int get_connect_timeout();
+	unsigned int get_idle_session_timeout();
+	unsigned int get_data_connection_timeout();
+	unsigned int get_local_umask();
+	unsigned int get_upload_max_rate();
+	unsigned int get_download_max_rate();
+	char* get_listen_address();
+
 private:
 	//定义一个字符串处理类
 	ftpstr lcwftpstr;
@@ -57,3 +72,5 @@ private:
 
 
  #endif
+
+

@@ -109,7 +109,7 @@ int parseconfig::loadfile()
         }
 	}  
 
-
+    //关闭配置文件
 	fclose(fp);
 	return 0;
 }
@@ -178,4 +178,72 @@ void parseconfig::configuint(char* key,char* value,int linenumber)
 	}
 	//不知道的指令
 	LCWFTPD_LOG(ERROR,"Bad directive in %s [line:%d] %s:Unknown directive",CONF_FILE,linenumber,key);
+}
+
+/**
+ *get_XXX - 一些访问私有成员的接口，有点啰嗦，不妨实现一番
+ */
+bool parseconfig::get_pasv_active()
+{
+	return pasv_active;
+}
+
+bool parseconfig::get_port_active()
+{
+	return port_active;
+}
+
+unsigned int parseconfig::get_listen_port()
+{
+	return listen_port;
+}
+
+unsigned int parseconfig::get_max_clients()
+{
+	return max_clients;
+}
+
+unsigned int parseconfig::get_max_per_ip()
+{
+	return max_per_ip;
+}
+
+unsigned int parseconfig::get_accept_timeout()
+{
+	return accept_timeout;
+}
+
+unsigned int parseconfig::get_connect_timeout()
+{
+	return connect_timeout;
+}
+
+unsigned int parseconfig::get_idle_session_timeout()
+{
+	return idle_session_timeout;
+}
+
+unsigned int parseconfig::get_data_connection_timeout()
+{
+	return data_connection_timeout;
+}
+
+unsigned int parseconfig::get_local_umask()
+{
+	return local_umask;
+}
+
+unsigned int parseconfig::get_upload_max_rate()
+{
+	return upload_max_rate;
+}
+
+unsigned int parseconfig::get_download_max_rate()
+{
+	return download_max_rate;
+}
+
+char* parseconfig::get_listen_address()
+{
+	return listen_address;
 }
