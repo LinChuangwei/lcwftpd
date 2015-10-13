@@ -244,8 +244,7 @@ void ftpproto::do_port(session_t* sess)
     unsigned int v[6];
     //sscanf从字符串按照特定格式获取输入
 	sscanf(sess->arg,"%u,%u,%u,%u,%u,%u",&v[2],&v[3],&v[4],&v[5],&v[0],&v[1]);
-	sess->port_addr = (struct sockaddr_in*)malloc(sizeof(struct sockaddr_in));//好像可以直接使用calloc
-	memset(sess->port_addr,0,sizeof(struct sockaddr_in));
+	sess->port_addr = (struct sockaddr_in*)calloc(1,sizeof(struct sockaddr_in));//calloc自动初始化为0
 	sess->port_addr->sin_family = AF_INET;
 	unsigned char* p = (unsigned char*)&sess->port_addr->sin_port;
 	p[0] = v[0];//端口保存到相应的字段
@@ -261,9 +260,31 @@ void ftpproto::do_port(session_t* sess)
     //解析ip ,port
 }
 
+/**
+ *do_pasv - 被动模式建立数据连接,这里只是定义了一个tcp服务器，没有accept
+ *@sess：会话结构体
+ */
 void ftpproto::do_pasv(session_t* sess)
 {
+	//被动模式，创建套接字，绑定端口，监听
+	char ip[16] = {0};
+	lcw_systools.getlocalip(ip);//获取本地IP
 
+	sess->pasv_listen_fd = lcw_systools.tcp_server(ip,0);//0表示端口任意
+	LCWFTPD_LOG(DEBUG,"pasv_listen_fd:%d",sess->pasv_listen_fd);
+	struct sockaddr_in addr;
+	socklen_t addrlen = sizeof(addr);
+	if ((getsockname(sess->pasv_listen_fd,(struct sockaddr*)&addr,&addrlen)) < 0)//获取本地的地址信息，套接字必须已知
+	{	
+		 LCWFTPD_LOG(DEBUG,"getsockname");
+	}
+	//这里端口任意的话，可能被防火墙关了
+	unsigned short port = ntohs(addr.sin_port);//保存端口信息，网络字节序转为主机字节序
+	unsigned int v[4];
+	sscanf(ip,"%u.%u.%u.%u",&v[0],&v[1],&v[2],&v[3]);
+	char text[1024] = {0};
+	sprintf(text,"Entering Passive Mode (%u,%u,%u,%u,%u,%u).",v[0],v[1],v[2],v[3],port>>8,port&0xFF);//port是两个字节，这里分别获取高八位和低八位
+	ftp_reply(sess,FTP_PASVOK,text);
 }
 
 /**
@@ -305,9 +326,27 @@ void ftpproto::do_appe(session_t* sess)
 
 }
 
+/**
+ *do_list - 处理列出目录列表命令
+ *@sess：会话结构体
+ */
 void ftpproto::do_list(session_t* sess)
 {
-
+	//创建数据连接,主动用connect，被动用accept
+	if (get_transfer_fd(sess))//连接失败
+	{
+		 LCWFTPD_LOG(DEBUG,"get_transfer_fd(sess)");
+		 return;
+	}
+	//150响应
+	ftp_reply(sess,FTP_DATACONN,"Here comes the directory listing.");
+	//传输列表
+	list_common(sess,1);//1表示详细清单
+	//关闭数据链接套接字,客户端貌似是通过判断套接字关闭从而判断数据是否接收完毕
+	close(sess->data_fd);
+	sess->data_fd = -1;
+	//226响应
+	ftp_reply(sess,FTP_TRANSFEROK,"Directory send OK.");
 }
 
 void ftpproto::do_nlst(session_t* sess)
@@ -407,12 +446,232 @@ void ftpproto::do_stat(session_t* sess)
 
 }
 
+/**
+ *do_noop - NOOP,这个是防止空闲断开
+ *@sess:会话结构体
+ */
 void ftpproto::do_noop(session_t* sess)
 {
-
+	ftp_reply(sess,FTP_NOOPOK,"NOOP ok.");
 }
 
 void ftpproto::do_help(session_t* sess)
 {
 
+}
+
+/**
+ *get_port_fd - 获取主动模式数据套接字
+ *@sess:会话结构体
+ *失败返回1，成功返回0
+ */
+int ftpproto::get_port_fd(session_t* sess)
+{//主动模式此时ftp服务器相当于客户端
+	int fd = lcw_systools.tcp_client(0);//到时改成20端口
+	if (-1 == fd)
+	{
+		//失败
+		LCWFTPD_LOG(DEBUG,"fd=-1");
+		return 1;
+	}
+	if (lcw_systools.connect_timeout(fd,sess->port_addr,0) < 0)
+	{//失败
+		 close(fd);
+		 return 1;
+	}
+	sess->data_fd = fd;//数据连接套接字
+	LCWFTPD_LOG(DEBUG,"data_fd:%d",sess->data_fd);
+	return 0;
+}
+
+/**
+ *get_pasv_fd - 获取被动模式数据套接字
+ *@sess:会话结构体
+ *失败返回1，成功返回0
+ */
+int ftpproto::get_pasv_fd(session_t* sess)
+{
+	//do_pasv中定义了一个tcp服务器，完成绑定和监听，这里完成accept
+	int fd = lcw_systools.accept_timeout(sess->pasv_listen_fd,NULL,0);
+	close(sess->pasv_listen_fd);//监听套接字此时已经没用，关掉
+	if (-1 == fd)
+	{//失败
+		LCWFTPD_LOG(DEBUG,"fd=-1");
+		return 1;
+	}
+	sess->data_fd = fd;//数据连接套接字
+	LCWFTPD_LOG(DEBUG,"data_fd:%d",sess->data_fd);
+	return 0;
+}
+
+/**
+ *port_active - 检查主动模式是否被激活过
+ *@sess:会话结构体
+ *激活过返回1，没有激活过返回0
+ */
+int ftpproto::port_active(session_t* sess)
+{//若主动模式被激活过，则有保存对等的地址，port结构体不为空
+	if (sess->port_addr != NULL)
+	{//主动模式处于激活的状态
+		if (pasv_active(sess))//被动模式也处于激活的状态
+		{//这种 状况是不允许的
+			LCWFTPD_LOG(ERROR,"both port and pasv are active");
+		}
+		return 1;
+	}
+	return 0;//没有激活过
+}
+
+/**
+ *pasv_active - 检查被动模式是否被激活过
+ *@sess:会话结构体
+ *激活过返回1，没有激活过返回0
+ */
+int ftpproto::pasv_active(session_t* sess)
+{
+  //若被动模式开启，pasv_listen_fd应该不等于-1
+	if (sess->pasv_listen_fd != -1)
+	{
+		//处于激活状态
+		if (port_active(sess))
+		{
+			//这种 状况是不允许的
+			LCWFTPD_LOG(ERROR, "both port and pasv are active");
+		}
+		return 1;
+	}
+	return 0;
+}
+
+
+/**
+ *get_transfer_fd - 创建数据连接,主动用connect，被动用accept
+ *@sess:会话结构体
+ *成功返回0，失败返回1
+ */
+int ftpproto::get_transfer_fd(session_t* sess)
+{
+	//检测是否收到PORT或者PASV命令
+	//激活过是1
+	if (!port_active(sess) && !pasv_active(sess))//没有被激活过
+	{//两个都没有被激活过，要给个应答，若直接返回会使客户端阻塞
+		ftp_reply(sess,FTP_BADSENDCONN,"Use PORT or PASV first.");
+		return 1;//失败
+	}
+	int ret = 0;
+	if (port_active(sess))//主动模式，服务器创建数据套接字(bind 20端口)
+	{	//调用connect连接客户端IP与端口，建立数据连接
+	   if (get_port_fd(sess))//获取主动模式的套接字
+	   {//失败
+	   	   ret = 1;
+	   }   	
+	}
+
+	if (pasv_active(sess))//被动模式，使用accept
+	{
+		if (get_pasv_fd(sess))//获取被动模式的套接字
+	   {//失败
+	   	   ret = 1;
+	   }   	
+	}
+
+    if (sess->port_addr)
+	{//之前调用过do_port了，数据连接用完就free
+		free(sess->port_addr);
+		sess->port_addr = NULL;
+	}
+	// if (ret)
+	// {
+	// 	//成功创建数据通道后就开启闹钟信号
+	// 	start_data_alarm();//重新安装SIGALRM信号，并启动闹钟
+	// }
+	return ret;//成功是0，失败是1
+}
+
+/**
+ *list_common - 列出目录列表
+ *@sess:会话结构体
+ *@type：要列出的目录列表的类型，1表示详细清单，0表示简要清单
+ *成功返回0，失败返回1
+ */
+int ftpproto::list_common(session_t* sess,int type)
+{
+	DIR* dir = opendir(".");//打开当前目录
+	if (dir == NULL)//打开失败
+	{
+		 return 1;
+	}
+	// struct dirent {
+ //               ino_t          d_ino;       /* inode number */
+ //               off_t          d_off;       /* not an offset; see NOTES */
+ //               unsigned short d_reclen;     length of this record 
+ //               unsigned char  d_type;      /* type of file; not supported
+ //                                              by all file system types */
+ //               char           d_name[256]; /* filename */
+ //           };
+	struct dirent* dt;
+	struct stat sbuf;
+	while((dt = readdir(dir)) != NULL)//遍历目录列表
+	{
+		if (dt->d_name[0] == '.')//过滤隐藏的文件
+		{
+			continue;
+		}
+		// struct stat {
+  //              dev_t     st_dev;     /* ID of device containing file */
+  //              ino_t     st_ino;     /* inode number */
+  //              mode_t    st_mode;    /* protection */
+  //              nlink_t   st_nlink;   /* number of hard links */
+  //              uid_t     st_uid;     /* user ID of owner */
+  //              gid_t     st_gid;     /* group ID of owner */
+  //              dev_t     st_rdev;     device ID (if special file) 
+  //              off_t     st_size;    /* total size, in bytes */
+  //              blksize_t st_blksize; /* blocksize for file system I/O */
+  //              blkcnt_t  st_blocks;  /* number of 512B blocks allocated */
+  //              time_t    st_atime;   /* time of last access */
+  //              time_t    st_mtime;   /* time of last modification */
+  //              time_t    st_ctime;   /* time of last status change */
+  //          };
+		if (lstat(dt->d_name,&sbuf) < 0)//stat获取文件的状态
+		{
+			 continue;
+		}
+		char buf[1024] = {0};
+		if (type)//详细清单
+		{
+			//获取权限
+			const char* perms = lcw_systools.statbuf_get_perms(&sbuf);
+	        //格式化权限
+			
+			int off = 0;
+			off += sprintf(buf,"%s ",perms);
+			off += sprintf(buf + off," %3lu %-8d %-8d ",(unsigned long)sbuf.st_nlink,sbuf.st_uid,sbuf.st_gid);//链接数，uid，gid
+			off += sprintf(buf + off,"%8lu ",(unsigned long)sbuf.st_size);//大小
+
+			//时间的格式化
+			const char* databuf = lcw_systools.statbuf_get_data(&sbuf);
+
+			off += sprintf(buf + off,"%s ",databuf);
+			if (S_ISLNK(sbuf.st_mode))//如果是符号链接文件 man lstat
+			{
+				char tmp[1024] = {0};
+				readlink(dt->d_name,tmp,sizeof(tmp));//获取符号链接文件所指向的文件
+				sprintf(buf + off,"%s -> %s\r\n",dt->d_name,tmp);//格式化文件名
+			}
+			else
+			{
+				sprintf(buf + off,"%s\r\n",dt->d_name);//格式化文件名
+			}
+		}
+		else//短清单
+		{
+			sprintf(buf,"%s\r\n",dt->d_name);//格式化文件名
+		}
+		//printf("%s",buf);//打印查看一下
+		//通过数据套接字发送目录列表
+	    lcw_systools.writen(sess->data_fd,buf,strlen(buf));
+
+	}
+	closedir(dir);
+	return 0;
 }

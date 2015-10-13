@@ -80,6 +80,45 @@ int systools::tcp_server(const char* host,unsigned short port)
 	return listenfd;
 }
 
+
+/**
+ *tcp_client - 用于主动模式时向客户端发起连接
+ *@port:端口号
+ *成功返回监听套接字
+ */
+int systools::tcp_client(unsigned short port)
+{
+	int sock;
+	if ((sock = socket(PF_INET,SOCK_STREAM,0)) < 0)//建立一个套接字
+	{
+		LCWFTPD_LOG(ERROR,"tcp_client");
+	}
+	//对于客户端，一般是不需要绑定端口的
+	if (port > 0)
+	{
+		//设置地址重复利用
+		int on = 1;
+		if ((setsockopt(sock,SOL_SOCKET,SO_REUSEADDR,(const char*)&on,sizeof(on))) < 0)
+		{
+			LCWFTPD_LOG(ERROR,"setsockopt");
+		}
+		char ip[16] = {0};
+		getlocalip(ip);//获取本机IP地址
+
+		struct sockaddr_in localaddr;
+		memset(&localaddr,0,sizeof(localaddr));
+		localaddr.sin_family = AF_INET;//协议族
+		localaddr.sin_port = htons(port);
+		localaddr.sin_addr.s_addr = inet_addr(ip);//ip转化为32位的整数
+		//绑定
+		if (bind(sock,(struct sockaddr*)&localaddr,sizeof(localaddr)) < 0)
+		{
+			LCWFTPD_LOG(ERROR,"bind");
+		}
+	}
+	return sock;//返回数据套接字
+}
+
 /**
  * accept_timeout - 接收连接超时函数，利用select实现 
  * @fd:文件描述符
@@ -254,4 +293,223 @@ ssize_t systools::readline(int sockfd, void* buf, size_t maxline)
 	}
 
 	return -1;
+}
+
+/**
+ *activate_nonblock - 设置IO为非阻塞模式
+ *@fd: 文件描述符
+ */ 
+void systools::activate_nonblock(int fd) 
+{
+	int ret;
+	int flags =fcntl(fd,F_GETFL);
+	if (-1 == flags)
+	{
+		LCWFTPD_LOG(ERROR,"fcntl");
+	}
+	flags |= O_NONBLOCK;
+	ret = fcntl(fd,F_SETFL,flags);
+	if (-1 == ret)
+	{
+		LCWFTPD_LOG(ERROR,"fcntl");
+	}
+}
+
+/**
+ *deactivate_nonblock - 设置IO为阻塞模式
+ *@fd: 文件描述符
+ */ 
+void systools::deactivate_nonblock(int fd)
+{
+	int ret;
+	int flags = fcntl(fd,F_GETFL);
+	if (-1 == flags)
+	{
+		LCWFTPD_LOG(ERROR,"fcntl");
+	}
+	flags &= ~O_NONBLOCK;//阻塞
+	ret = fcntl(fd,F_SETFL,flags);
+	if (-1 == ret)
+	{
+		LCWFTPD_LOG(ERROR,"fcntl");
+	}
+}
+
+/**
+ *connect_timeout - 带超时的connect
+ *@fd: 套接字
+ *@addr: 输出参数，返回对方地址
+ *@wait_seconds: 等待超时秒数，如果为0表示正常模式
+ *返回值：成功（未超时）返回0，失败返回-1，超时返回-1并且errno = ETIMEDOUT
+ */
+int systools::connect_timeout(int fd,struct sockaddr_in* addr,unsigned int wait_seconds)//连接超时函数
+{
+	int ret;
+	socklen_t addrlen = sizeof(struct sockaddr_in);
+	
+	if (wait_seconds > 0)//等待秒数大于0，设置为非阻塞模式
+		activate_nonblock(fd);
+
+	ret = connect(fd, (struct sockaddr*)addr, addrlen);
+	if (ret < 0 && errno == EINPROGRESS) 
+	{//非阻塞，结果是 EINPROGRESS，那么就代表连接还在进行中
+	 //后面可以通过poll或者select来判断socket是否可写，如果可以写，说明连接完成了
+		fd_set connect_fdset;
+		struct timeval timeout;
+		FD_ZERO(&connect_fdset);
+		FD_SET(fd, &connect_fdset);	
+		timeout.tv_sec = wait_seconds;
+		timeout.tv_usec = 0;
+		do {
+			//一旦连接建立，套接字就可写
+			ret = select(fd + 1, NULL, &connect_fdset, NULL, &timeout);
+		} while (ret < 0 && errno == EINTR);
+		if (ret == 0) 
+		{//超时
+			errno = ETIMEDOUT;
+			return -1;
+		}
+		else if (ret < 0)
+		{//错误
+			return -1;
+		}
+		else if (ret == 1) 
+		{
+			// ret返回为1，可能有两种情况，一种是连接建立成功，一种是套接字产生错误
+			// 此时错误信息不会保存至errno变量中（connect没出错）,因此，需要调用
+			// getsockopt来获取 
+			int err;
+			socklen_t socklen = sizeof(err);
+			int sockoptret = getsockopt(fd, SOL_SOCKET, SO_ERROR, &err, &socklen);
+			if (sockoptret == -1)
+				return -1;
+			if (err == 0)
+				ret = 0;
+			else 
+			{
+				errno = err;
+				ret = -1;
+			}
+		}
+	}
+	if (wait_seconds > 0)
+		deactivate_nonblock(fd);
+	return ret;
+}
+
+/**
+ *statbuf_get_perms - 获取权限
+ *@sbuf：文件状态结构体
+ *返回权限的数组
+ */
+const char* systools::statbuf_get_perms(struct stat *sbuf)
+{
+	//加static的区别？？没加是局部变量，返回时已经销毁，现在是静态变量
+	//静态变量生存期是整个源程序
+	static char perms[] = "----------";//权限位
+	perms[0] = '?';
+	mode_t mode = sbuf->st_mode;
+	switch(mode & S_IFMT)//S_IFMT 0170000 bit mask for the file type bit fields
+	{
+		case S_IFREG://regular file普通文件
+			perms[0] = '-';
+			break;
+		case S_IFSOCK://socket 套接字文件
+			perms[0] = 's';
+			break;
+		case S_IFLNK://symbolic link 符号链接文件
+			perms[0] = 'l';
+			break;
+		case S_IFBLK://rblock device块设备文件
+			perms[0] = 'b';
+			break;
+		case S_IFDIR://directory目录文件
+			perms[0] = 'd';
+			break;
+		case S_IFCHR://character device字符设备文件
+			perms[0] = 'c';
+			break;
+		case S_IFIFO://FIFO管道文件
+			perms[0] = 'p';
+			break;
+		default:
+			break;
+	}
+	//用户权限
+	if (mode & S_IRUSR)//owner has read permission读权限
+	{
+		 perms[1] = 'r';
+	}
+	if (mode & S_IWUSR)//owner has write permission写权限
+	{
+		 perms[2] = 'w';
+	}
+	if (mode & S_IXUSR)//owner has execute permissionk可执行权限
+	{
+		 perms[3] = 'x';
+	}
+	//组用户权限
+	if (mode & S_IRGRP)//group has read permission读权限
+	{
+		 perms[4] = 'r';
+	}
+	if (mode & S_IWGRP)//group has write permission写权限
+	{
+		 perms[5] = 'w';
+	}
+	if (mode & S_IXGRP)//group has execute permission可执行权限
+	{
+		 perms[6] = 'x';
+	}
+	//其他用户权限
+	if (mode & S_IROTH)//others have read permission读权限
+	{
+		 perms[7] = 'r';
+	}
+	if (mode & S_IWOTH)//others have write permission写权限
+	{
+		 perms[8] = 'w';
+	}
+	if (mode & S_IXOTH)//others have execute permission可执行权限
+	{
+		 perms[9] = 'x';
+	}
+  	//特殊权限
+  	if (mode & S_ISUID)//set-user-ID bit
+	{//如果当前具有x的权限，改为s，否则改为S
+		 perms[3] = (perms[3] == 'x')?'s':'S';
+	}
+	if (mode & S_ISGID)//set-group-ID bit
+	{//如果当前具有x的权限，改为s，否则改为S
+		 perms[6] = (perms[6] == 'x')?'s':'S';
+	}
+	if (mode & S_ISVTX)//sticky bit
+	{//如果当前具有x的权限，改为t，否则改为T
+		 perms[9] = (perms[9] == 'x')?'t':'T';
+	}
+	return perms;
+}
+
+/**
+ *statbuf_get_data - 获取时间
+ *@sbuf：文件状态结构体
+ *返回权限的数组
+ */
+const char* systools::statbuf_get_data(struct stat *sbuf)//获取时间
+{
+	//时间的格式化
+	static char databuf[64] = {0};
+	const char* p_data_format = "%b %e %H:%M";//%b月份的简写,%e在两字符域中,十进制表示的每月的第几天
+	struct timeval tv;
+	gettimeofday(&tv,NULL);
+	time_t local_time = tv.tv_sec;
+	if (sbuf->st_mtime > local_time || (local_time - sbuf->st_mtime) > 182*24*60*60)//超过半年
+	{
+		p_data_format = "%b %e %Y";//月份缩写
+	}
+	//localtime将秒转换成结构体
+	struct tm* p_tm = localtime(&local_time);
+	strftime(databuf,sizeof(databuf),p_data_format,p_tm);//格式化时间
+
+	return databuf;
 }

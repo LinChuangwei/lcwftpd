@@ -21,15 +21,17 @@ lcwftpd_loop::~lcwftpd_loop()
 /*
 typedef struct ftp_session
 { 
-     //控制连接
+    //控制连接
     uid_t uid;//用户id
-	int ctrl_fd;//已连接套接字
+	  int ctrl_fd;//已连接套接字
     char ip[16];//ip
     char cmdline[MAX_COMMAND_LINE];//命令行
     char cmd[MAX_COMMAND];//命令
     char arg[MAX_ARG];//参数
     //数据连接
     struct sockaddr_in* port_addr;//到时要连接的地址
+    int pasv_listen_fd;//被动模式套接字
+    int data_fd;//数据套接字
     //FTP协议状态
     int is_ascii;//是否是ascii码状态
 
@@ -55,7 +57,7 @@ void lcwftpd_loop::lcwftpd_init()
 		//控制连接
         0,-1,{0},{0},{0},{0},
         //数据连接
-        NULL,
+        NULL,-1,-1,
         //FTP协议状态	
         -1
 	};
@@ -93,6 +95,8 @@ void lcwftpd_loop::lcwftpd_run()
 	    	lcw_sess.ctrl_fd = conn;
 	    	strcpy(lcw_sess.ip,char_ip);//拷贝ip
 	    	LCWFTPD_LOG(DEBUG,"子进程");
+	    	//不让捕捉SIGCHLD继承下去
+			signal(SIGCHLD,SIG_IGN);
 	    	//子进程开启一个新的会话
 	    	lcw_session.begin_session(&lcw_sess);
 	    }

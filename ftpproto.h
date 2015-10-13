@@ -39,6 +39,16 @@ private:
     void ftp_reply(session_t* sess,int status,const char* text);
     //另一种形式的应答函数
     void ftp_lreply(session_t* sess,int status,const char* text);
+    //创建数据连接,主动用connect，被动用accept
+	int get_transfer_fd(session_t* sess);
+	//列出目录列表
+	int list_common(session_t* sess,int type);
+
+	int pasv_active(session_t* sess);
+	int port_active(session_t* sess);
+	int get_pasv_fd(session_t* sess);
+	int get_port_fd(session_t* sess);
+
     //命令对应的函数
     void do_user(session_t* sess);
     void do_pass(session_t* sess);

@@ -13,7 +13,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <unistd.h>
-#include <sys/types.h>      
+#include <sys/types.h> 
 #include <sys/socket.h>
 #include <errno.h>
 #include <netdb.h>
@@ -27,6 +27,15 @@
 #include <pwd.h>
 #include <shadow.h>
 #include <crypt.h>
+#include <dirent.h>
+#include <sys/stat.h>
+#include <sys/time.h>
+//这个头文件写错了
+//#include <sys/capability.h>
+//应该是
+#include <linux/capability.h>
+#include <sys/syscall.h>   // For SYS_xxx definitions  
+#include <signal.h>
 
 /**
  *会话结构体
@@ -45,6 +54,8 @@ typedef struct ftp_session
     char arg[MAX_ARG];//参数
     //数据连接
     struct sockaddr_in* port_addr;//到时要连接的地址
+    int pasv_listen_fd;//被动模式套接字
+    int data_fd;//数据套接字
     //FTP协议状态
     int is_ascii;//是否是ascii码状态
 
