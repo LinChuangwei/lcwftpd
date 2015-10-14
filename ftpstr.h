@@ -22,6 +22,7 @@
  	 void str_upper(char* str);
  	 //字符串表示的8进制数转换为unsigned int
  	 unsigned int str_octal_to_uint(char* str);
+
 private:
  	 void fangjinggao();
  };

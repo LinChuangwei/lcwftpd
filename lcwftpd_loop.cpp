@@ -34,6 +34,7 @@ typedef struct ftp_session
     int data_fd;//数据套接字
     //FTP协议状态
     int is_ascii;//是否是ascii码状态
+    long long restart_pos;//用于后期的断点续传
 
 }session_t;
 */
@@ -59,7 +60,7 @@ void lcwftpd_loop::lcwftpd_init()
         //数据连接
         NULL,-1,-1,
         //FTP协议状态	
-        -1
+        -1,0
 	};
 }	
 /**
@@ -93,6 +94,7 @@ void lcwftpd_loop::lcwftpd_run()
 	    	close(listenfd);//子进程无需处理监听
 	    	//登记已连接的套接字
 	    	lcw_sess.ctrl_fd = conn;
+	    	LCWFTPD_LOG(DEBUG,"ctrl_fd:%d",lcw_sess.ctrl_fd);
 	    	strcpy(lcw_sess.ip,char_ip);//拷贝ip
 	    	LCWFTPD_LOG(DEBUG,"子进程");
 	    	//不让捕捉SIGCHLD继承下去

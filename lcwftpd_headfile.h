@@ -36,6 +36,7 @@
 #include <linux/capability.h>
 #include <sys/syscall.h>   // For SYS_xxx definitions  
 #include <signal.h>
+#include <sys/sendfile.h>
 
 /**
  *会话结构体
@@ -58,6 +59,7 @@ typedef struct ftp_session
     int data_fd;//数据套接字
     //FTP协议状态
     int is_ascii;//是否是ascii码状态
+    long long restart_pos;//用于后期的断点续传
 
 }session_t;
 

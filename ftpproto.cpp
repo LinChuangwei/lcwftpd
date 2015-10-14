@@ -32,6 +32,8 @@ void ftpproto::handle_ftp(session_t* sess)
 		memset(sess->arg,0,sizeof(sess->arg));
 		//读取命令到cmdline
 		ret = lcw_systools.readline(sess->ctrl_fd,sess->cmdline,MAX_COMMAND);
+		LCWFTPD_LOG(DEBUG,"ctrl_fd:%d",sess->ctrl_fd);
+		LCWFTPD_LOG(DEBUG,"ret:%d",ret);
 		if (-1 == ret)//读取错误
 		{
 			LCWFTPD_LOG(ERROR,"lcw_systools.readline");
@@ -77,9 +79,9 @@ void ftpproto::ftp_commands_map_init()
   	commandsmap["USER"] = &ftpproto::do_user;
   	commandsmap["PASS"] = &ftpproto::do_pass;
   	commandsmap["CWD"] = &ftpproto::do_cwd;
-  	commandsmap["XCWD"] = &ftpproto::do_xcwd;
+  	commandsmap["XCWD"] = &ftpproto::do_cwd;
   	commandsmap["CDUP"] = &ftpproto::do_cdup;
-  	commandsmap["XCUP"] = &ftpproto::do_xcup;
+  	commandsmap["XCUP"] = &ftpproto::do_cdup;
   	commandsmap["QUIT"] = &ftpproto::do_quit;
 
   	//传输参数命令
@@ -206,29 +208,45 @@ void ftpproto::do_pass(session_t* sess)
 	ftp_reply(sess,FTP_LOGINOK,"Hello~ Login successful,Welcome you!");
 }
 
+/**
+ *do_cwd - 改变当前路径
+ *@sess:会话结构体
+ */
 void ftpproto::do_cwd(session_t* sess)
 {
-
+	//更改路径,此时路径已经存放于arg中
+	if (chdir(sess->arg) < 0)//这里好像也是可以切换到root的？？？？
+	{//更改路径失败
+		ftp_reply(sess,FTP_FILEFAIL,"Failed to change directory.");
+		return;
+	}
+	ftp_reply(sess,FTP_CWDOK,"Directory successful changed.");
 }
 
-void ftpproto::do_xcwd(session_t* sess)
-{
-
-}
-
+/**
+ *do_cdup - 返回上层目录
+ *@sess:会话结构体
+ */
 void ftpproto::do_cdup(session_t* sess)
 {
-
+	//更改到上层路径
+	if (chdir("..") < 0)//这里好像也是可以切换到root的？？？？
+	{//更改路径失败
+		ftp_reply(sess,FTP_FILEFAIL,"Failed to change directory.");
+		return;
+	}
+	ftp_reply(sess,FTP_CWDOK,"Directory successful changed.");
 }
 
-void ftpproto::do_xcup(session_t* sess)
-{
 
-}
-
+/**
+ *do_quit - 断开
+ *@sess：会话结构体
+ */
 void ftpproto::do_quit(session_t* sess)
 {
-
+	ftp_reply(sess,FTP_GOODBYE,"Goodbye");
+	LCWFTPD_LOG(ERROR,"QUIT!!!");
 }
 
 
@@ -311,19 +329,138 @@ void ftpproto::do_type(session_t* sess)
 
 
 //服务命令
+/**
+ *do_retr -  下载文件，断点续载
+ *@sess：会话结构体
+ */
 void ftpproto::do_retr(session_t* sess)
 {
+	//创建数据连接,主动用connect，被动用accept
+	if (get_transfer_fd(sess))//连接失败
+	{//get_transfer_fd里面会开启数据通道的传输闹钟，等下传输结束记得关掉
+		 LCWFTPD_LOG(DEBUG,"get_transfer_fd(sess)");
+		 return;
+	}
+	 LCWFTPD_LOG(DEBUG,"data_fd int do_retr:%d",sess->data_fd);
+	//保存断点
+	long long offset = sess->restart_pos;
+	sess->restart_pos = 0;//断点位置为0
 
+	int fd = open(sess->arg,O_RDONLY);//以只读方式打开文件
+	if (-1 == fd)
+	{
+		//打开失败
+		ftp_reply(sess,FTP_FILEFAIL,"Failed to open file.");
+		return;
+	}
+	int ret;
+	//加读锁
+	ret = lcw_systools.lock_file_read(fd);
+	if (-1 ==ret)
+	{//加锁失败
+		ftp_reply(sess,FTP_FILEFAIL,"Failed to open file.");
+	}
+	//判断是否是普通文件，设备文件是不能下载的
+	struct stat sbuf;
+	ret = fstat(fd,&sbuf);//将文件状态保存在sbuf中
+	if (!S_ISREG(sbuf.st_mode))
+	{//不是一个普通文件
+		ftp_reply(sess,FTP_FILEFAIL,"Failed to open file.");
+		return;
+	}
+	
+	if (offset != 0)//如果有断点
+	{
+		ret = lseek(fd,offset,SEEK_SET);//定位断点
+		if (-1 == ret)
+		{
+			//定位失败
+			ftp_reply(sess,FTP_FILEFAIL,"Failed to lseek");
+			return;
+		}
+	}
+	char text[1024] = {0};
+	if (sess->is_ascii)//TYPE A
+	{
+		 //ASCII码模式(实际上我们这里都是以二进制方式进行传输)
+		sprintf(text,"Opening ASCII mode data connection for %s (%lld bytes).",
+			 sess->arg,(long long)sbuf.st_size);
+	}
+	else//TYPE I
+	{
+		//二进制模式
+		sprintf(text,"Opening BINARY mode data connection for %s (%lld bytes).",
+			 sess->arg,(long long)sbuf.st_size);
+	}
+	//150响应
+	ftp_reply(sess,FTP_DATACONN,text);
+	//下载文件
+	int flag = 0;//标志变量
+	//sendfile直接在内核空间操作，不涉及拷贝，效率较高
+	long long bytes_to_send = sbuf.st_size;//文件大小
+	if (offset > bytes_to_send)//断点位置不对
+	{
+		bytes_to_send = 0;
+	}
+	else
+	{
+		bytes_to_send -= offset;//只传输断点到文件结束的大小
+	}
+	//开始传输
+	while(bytes_to_send)
+	{
+		int num_this_time = bytes_to_send > 4096 ? 4096:bytes_to_send;
+		ret = sendfile(sess->data_fd,fd,NULL,num_this_time);//不会返回EINTR,ret是发送成功的字节数
+		if (-1 == ret)
+		{
+			//发送失败
+			flag = 2;
+			break;
+		}
+		bytes_to_send -= ret;//更新剩下的字节数
+	}
+
+	if (bytes_to_send == 0)
+	{
+		//发送成功
+		flag = 0;
+	}
+	//关闭数据链接套接字,客户端貌似是通过判断套接字关闭从而判断数据是否接收完毕
+	close(sess->data_fd);
+	sess->data_fd = -1;
+	//关闭文件
+    close(fd);
+	if (0 == flag)//成功并且没有收到abor
+	{
+		//226响应
+		ftp_reply(sess,FTP_TRANSFEROK,"Transfer complete.");
+	}
+	else if (1 == flag)
+	{//文件读取失败 451
+		 ftp_reply(sess,FTP_BADSENDFILE,"Failure reading from local file.");
+	}
+	else if (2 == flag)
+	{//文件发送失败 426
+		ftp_reply(sess,FTP_BADSENDNET,"Failure writting to network stream.");
+	}
 }
 
+/**
+ *do_stor - 以STOR方式上传文件
+ *@sess：会话结构体
+ */
 void ftpproto::do_stor(session_t* sess)
 {
-
+	upload_common(sess,0);//0表示STOR方式
 }
 
+/**
+ *do_stor - 以APPE方式上传文件
+ *@sess：会话结构体
+ */
 void ftpproto::do_appe(session_t* sess)
 {
-
+	upload_common(sess,1);//1表示APPE方式
 }
 
 /**
@@ -349,19 +486,49 @@ void ftpproto::do_list(session_t* sess)
 	ftp_reply(sess,FTP_TRANSFEROK,"Directory send OK.");
 }
 
+/**
+ *do_nlst - 处理列出目录列表命令，可用windows登录，命令短清单
+ *@sess：会话结构体
+ */
 void ftpproto::do_nlst(session_t* sess)
 {
-
+	//创建数据连接,主动用connect，被动用accept
+	if (get_transfer_fd(sess))//连接失败
+	{
+		LCWFTPD_LOG(DEBUG,"get_transfer_fd(sess)");
+		 return;
+	}
+	//150响应
+	ftp_reply(sess,FTP_DATACONN,"Here comes the directory listing.");
+	//传输列表
+	list_common(sess,0);//0表示短清单
+	//关闭数据链接套接字,客户端貌似是通过判断套接字关闭从而判断数据是否接收完毕
+	close(sess->data_fd);
+	sess->data_fd = -1;
+	//226响应
+	ftp_reply(sess,FTP_TRANSFEROK,"Directory send OK.");
 }
 
+/**
+ *do_rest - 断点续传
+ *@sess:会话结构体
+ */
 void ftpproto::do_rest(session_t* sess)
 {
-
+	sess->restart_pos = atoll(sess->arg);//字符串转换为long long
+	LCWFTPD_LOG(DEBUG,"restart_pos：%lld",sess->restart_pos);
+	char text[1024] = {0};
+	sprintf(text,"Restart position accepted (%lld).",sess->restart_pos);
+	ftp_reply(sess,FTP_RESTOK,text);
 }
 
-void ftpproto::do_abor(session_t* sess)
-{
-
+/**
+ *do_abor - quit是直接断开，abor只断开数据连接，控制连接不断开
+ *@sess:会话结构体
+ */
+void ftpproto::do_abor(session_t* sess)//断开数据连接通道，这里是通过正常模式传输
+{//没有数据在传输没直接回应即可
+	ftp_reply(sess,FTP_ABOR_NOCONN,"No transfer to ABOR");
 }
 
 /**
@@ -379,19 +546,66 @@ void ftpproto::do_pwd(session_t* sess)
 	ftp_reply(sess,FTP_PWDOK,text);
 }
 
+/**
+ *do_mkd - 创建目录
+ *@sess:会话结构体
+ */
 void ftpproto::do_mkd(session_t* sess)
 {
-
+	if (mkdir(sess->arg,0777) < 0)//0777为权限  0777&umask
+	{//创建目录失败(没有写入权限时好像也可以写入)
+		ftp_reply(sess,FTP_FILEFAIL,"Create directory operation failed.");//响应
+		return;
+	}
+	char text[4096] = {0};
+	if (sess->arg[0] == '/')//如果是绝对路径
+	{
+		 sprintf(text,"%s created.",sess->arg);
+	}
+	else//是相对路径
+	{
+		char dir[4096+1] = {0};
+		//获取当前路径
+		getcwd(dir,4096);
+		if (dir[strlen(dir) - 1] == '/')//最后一个字符是否等于斜杠
+		{
+			sprintf(text,"%s%s created.",dir,sess->arg);
+		}
+		else
+		{
+			sprintf(text,"%s/%s created.",dir,sess->arg);
+		}
+	}
+	ftp_reply(sess,FTP_MKDIROK,text);//响应
 }
 
+/**
+ *do_rmd - 删除一个文件夹
+ *@sess:会话结构体
+ */
 void ftpproto::do_rmd(session_t* sess)
 {
-
+	if (rmdir(sess->arg) < 0)
+	{
+		ftp_reply(sess,FTP_FILEFAIL,"Remove directory operation failed.");
+		return;
+	}
+	ftp_reply(sess,FTP_RMDIROK,"Remove directory operation successful.");
 }
 
+/**
+ *do_dele - 删除文件
+ *@sess:会话结构体
+ */
 void ftpproto::do_dele(session_t* sess)
 {
-
+	//使用unlink删除文件
+	if (unlink(sess->arg) < 0)
+	{
+		ftp_reply(sess,FTP_FILEFAIL,"Delete operation failed.");
+		return;
+	}
+	ftp_reply(sess,FTP_DELEOK,"Delete operation successful.");
 }
 
 void ftpproto::do_rnfr(session_t* sess)
@@ -674,4 +888,141 @@ int ftpproto::list_common(session_t* sess,int type)
 	}
 	closedir(dir);
 	return 0;
+}
+
+/**
+ *upload_common - 上传文件
+ *@sess:会话结构体
+ *@is_append:是否以appe方式上传，0表示STOR方式，1表示APPE方式
+ */
+void ftpproto::upload_common(session_t* sess,int is_append)
+{
+	//创建数据连接,主动用connect，被动用accept
+	if (get_transfer_fd(sess))//连接失败
+	{
+		 LCWFTPD_LOG(DEBUG,"get_transfer_fd(sess)");
+		 return;
+	}
+	//保存断点,REST命令保存断点
+	long long offset = sess->restart_pos;
+	sess->restart_pos = 0;//断点置为0
+	//以创建，只写的方式打开文件，权限默认0666，实际的权限时0666 & umask
+	int fd = open(sess->arg,O_CREAT | O_WRONLY ,0666);//以只读方式打开文件
+	LCWFTPD_LOG(DEBUG,"file name：%s",sess->arg);//文件名是有带路径的
+	if (-1 == fd)
+	{
+		//创建失败
+		ftp_reply(sess,FTP_UPLOADFAIL,"Could not cteate file.");
+		return;
+	}
+	int ret;
+	//加写锁
+	ret = lcw_systools.lock_file_write(fd);
+	if (-1 ==ret)
+	{
+		ftp_reply(sess,FTP_UPLOADFAIL,"Could not cteate file.");
+		return;
+	}
+	//查看下是什么方式上传
+	if (!is_append && offset == 0)//STOR上传
+	{
+		//把原来文件的长度清零
+		ftruncate(fd,0);
+		if (lseek(fd,0,SEEK_SET) < 0)//文件定位到文件头的位置
+		{
+			ftp_reply(sess,FTP_UPLOADFAIL,"Could not cteate file.");
+			return;
+		} 
+	}
+	else if (!is_append && offset != 0)//REST+STOR 断点续传
+	{
+		if (lseek(fd,offset,SEEK_SET) < 0)//将读写位置指向文件头后再增加offset个位移量
+		{
+			ftp_reply(sess,FTP_UPLOADFAIL,"Could not cteate file.");
+			return;
+		}
+	}
+	else if (is_append)//APPE 断点续传
+	{//将读写位置指向文件尾后再增加offset个位移量
+		if (lseek(fd,0,SEEK_END) < 0)//偏移到文件末尾
+		{
+			ftp_reply(sess,FTP_UPLOADFAIL,"Could not cteate file.");
+			return;
+		}
+	}
+	//获取文件状态
+	struct stat sbuf;
+	ret = fstat(fd,&sbuf);//将文件状态保存在sbuf中
+	if (!S_ISREG(sbuf.st_mode))
+	{//不是一个普通文件
+		ftp_reply(sess,FTP_UPLOADFAIL,"Could not create file.");
+		return;
+	}
+
+	char text[1024] = {0};
+	if (sess->is_ascii)//TYPE A
+	{
+		 //ASCII码模式(实际上我们这里都是以二进制方式进行传输)
+		sprintf(text,"Opening ASCII mode data connection for %s (%lld bytes).",
+			 sess->arg,(long long)sbuf.st_size);
+	}
+	else//TYPE I
+	{
+		//二进制模式
+		sprintf(text,"Opening BINARY mode data connection for %s (%lld bytes).",
+			 sess->arg,(long long)sbuf.st_size);
+	}
+
+	//150响应
+	ftp_reply(sess,FTP_DATACONN,text);
+	
+	//上传文件
+	//这个buf变大的时候传输速度可相应有所提高
+	//可提供一个配置项来配置这个65536//64K
+	char buf[1024];
+	int flag = 0;//标志变量
+	while(1)
+	{
+		ret = read(sess->data_fd,buf,sizeof(buf));//从数据套接字中读取数据到buf
+		if (-1 == ret)
+		{
+			if (errno == EINTR)//被信号中断
+			{
+				 continue;
+			}
+			else
+			{
+				flag = 2;//失败
+				break;
+			}
+		}
+		else if (0 == ret)
+		{//读取完毕
+			 flag = 0;//成功
+			 break;
+		}
+		if (lcw_systools.writen(fd,buf,ret) != ret)//写入文件
+		{
+			flag = 1;//失败
+			break;
+		} 
+	}
+	//关闭数据链接套接字,客户端貌似是通过判断套接字关闭从而判断数据是否接收完毕
+	close(sess->data_fd);
+	sess->data_fd = -1;
+    //关闭文件
+    close(fd);
+	if (0 == flag)//成功
+	{
+		//226响应
+		ftp_reply(sess,FTP_TRANSFEROK,"Transfer complete.");
+	}
+	else if (1 == flag)
+	{//写入本地失败  451
+		 ftp_reply(sess,FTP_BADSENDFILE,"Failure writting to local file.");
+	}
+	else if (2 == flag)
+	{//读取网络失败  426
+		ftp_reply(sess,FTP_BADSENDNET,"Failure reading from network stream.");
+	}
 }

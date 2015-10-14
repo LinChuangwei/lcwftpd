@@ -12,7 +12,8 @@
  */
 int systools::getlocalip(char* ip)//暂时这样实现
 {
-	strcpy(ip,"192.168.199.170");
+	// strcpy(ip,"192.168.199.170");
+	strcpy(ip,"192.168.64.128");
 	return 0;
 }
 /**
@@ -512,4 +513,78 @@ const char* systools::statbuf_get_data(struct stat *sbuf)//获取时间
 	strftime(databuf,sizeof(databuf),p_data_format,p_tm);//格式化时间
 
 	return databuf;
+}
+
+
+/**
+ *lock_internal - 处理文件的读写锁
+ *@fd：文件描述符
+ *@lock_type：加锁的类型
+ *成功返回0，失败返回-1
+ */
+int systools::lock_internal(int fd,int lock_type)
+{
+	//处理锁的过程中还可能被信号中断，还要处理信号中断的问题
+  // struct flock {
+  //              ...
+  //              short l_type;    /* Type of lock: F_RDLCK,
+  //                                  F_WRLCK, F_UNLCK */
+  //              short l_whence;  /* How to interpret l_start:
+  //                                  SEEK_SET, SEEK_CUR, SEEK_END */
+  //              off_t l_start;   /* Starting offset for lock */
+  //              off_t l_len;     /* Number of bytes to lock */
+  //              pid_t l_pid;     /* PID of process blocking our lock
+  //                                  (F_GETLK only) */
+  //              ...
+  //          };
+	int ret;
+	struct flock the_lock;//定义一个锁的结构体
+	memset(&the_lock,0,sizeof(the_lock));
+	the_lock.l_type = lock_type;//锁类型 
+	the_lock.l_whence = SEEK_SET;//加锁位置：从文件头部开始加锁
+	the_lock.l_start = 0;//偏移位置为0
+	the_lock.l_len = 0;//加锁的范围字节数，0表示将整个文件加锁
+ 	do
+ 	{
+ 		ret = fcntl(fd,F_SETLKW,&the_lock);//加锁
+ 	} while (ret < 0 && errno == EINTR);//error==EINTR表示被信号中断
+ 	//ret==0加锁成功
+ 	return ret;
+}
+
+/**
+ *lock_file_read - 文件加读锁
+ *@fd:要处理的文件描述符
+ */
+int systools::lock_file_read(int fd)
+{
+	return lock_internal(fd,F_RDLCK);
+}
+
+/**
+ *lock_file_write - 文件写加锁
+ *@fd:要处理的文件描述符
+ */
+int systools::lock_file_write(int fd)
+{
+	return lock_internal(fd,F_WRLCK);
+}
+
+/**
+ *unlock_file -  解锁函数
+ *@fd:要处理的文件描述符
+ */
+int systools::unlock_file(int fd)
+{
+	int ret;
+	struct flock the_lock;//定义一个锁的结构体
+	memset(&the_lock,0,sizeof(the_lock));
+	the_lock.l_type = F_UNLCK;//锁类型 :解锁
+	the_lock.l_whence = SEEK_SET;//加锁位置：从文件头部开始加锁
+	the_lock.l_start = 0;//偏移位置为0
+	the_lock.l_len = 0;//加锁的范围字节数，0表示将整个文件加锁
+ 	//这里不希望解锁阻塞，不用do while，解锁失败直接返回
+ 	ret = fcntl(fd,F_SETLKW,&the_lock);//加锁
+ 	
+ 	return ret;
 }

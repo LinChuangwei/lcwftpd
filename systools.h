@@ -37,11 +37,20 @@ public:
 	const char* statbuf_get_perms(struct stat *sbuf);
 	//获取时间
 	const char* statbuf_get_data(struct stat *sbuf);
+	//加读锁
+	int lock_file_read(int fd);
+	//加写锁
+	int lock_file_write(int fd);
+	//解锁
+	int unlock_file(int fd);
+
 private:
 	//读取数据到缓冲区buf但是不清除读取缓冲区
 	ssize_t recv_peek(int sockfd, void* buf, size_t len);// recv()只能读写套接字，而不能是一般的文件描述符  
 	//从fd读取定长的数据
 	ssize_t readn(int fd, void* buf, size_t count);
+    //加锁函数
+	int lock_internal(int fd,int lock_type);
 };
 
 #endif

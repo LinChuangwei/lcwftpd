@@ -113,3 +113,4 @@ unsigned int ftpstr::str_octal_to_uint(char* str)
 	}
 	return result;
 }
+

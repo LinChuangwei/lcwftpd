@@ -43,6 +43,8 @@ private:
 	int get_transfer_fd(session_t* sess);
 	//列出目录列表
 	int list_common(session_t* sess,int type);
+	//上传文件
+	void upload_common(session_t* sess,int is_append);
 
 	int pasv_active(session_t* sess);
 	int port_active(session_t* sess);
@@ -53,9 +55,7 @@ private:
     void do_user(session_t* sess);
     void do_pass(session_t* sess);
     void do_cwd(session_t* sess);
-	void do_xcwd(session_t* sess);
 	void do_cdup(session_t* sess);
-	void do_xcup(session_t* sess);
 	void do_quit(session_t* sess);
 	//传输参数命令
 	void do_port(session_t* sess);
