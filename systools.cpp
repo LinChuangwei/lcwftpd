@@ -588,3 +588,112 @@ int systools::unlock_file(int fd)
  	
  	return ret;
 }
+
+/**
+ *send_fd - 发送文件描述符
+ */
+void send_fd(int sock_fd,int fd)
+{
+//发送进程建立一个msghdr结构，其中包含要传递的描述符
+	//消息的头部
+// struct msghdr {
+ //    void         *msg_name;//套接口地址成员
+ //    socklen_t    msg_namelen;
+ //    struct iovec *msg_iov;//多io缓冲区的地址
+ //    size_t       msg_iovlen;/
+ //    void         *msg_control;//辅助数据的地址
+ //    size_t       msg_controllen;
+ //    int          msg_flags;//接收信息标记位
+	// };
+//控制信息头部
+	//辅助数据的数据头部
+// struct cmsghdr {
+	//附属数据的字节计数，这包含结构头的尺寸。这个值是由CMSG_LEN()宏计算的
+//                socklen_t     cmsg_len;     /* data byte count, including hdr */
+	//原始的协议级别
+//                int           cmsg_level;    /*originating protocol */
+//                int           cmsg_type;    /* protocol-specific type */
+//            /* followed by
+//                unsigned char cmsg_data[]; */
+//            };
+
+	// struct iovec  { 
+ //    void  * io_base ;   / *  buffer空间的基地址  * / 
+ //    size_t iov_len ;   / *  该buffer空间的长度  * / 
+	// } ;
+	//要发送一个文件描述符的进程必须使用正确的格式化数据来创建一个附属数据缓冲区
+	int ret;
+	struct msghdr msg_send;//发送
+	struct cmsghdr *p_cmsg;
+	struct iovec vec;//IO向量
+	//CMSG_SPACE这个宏用来计算附属数据以及其头部所需的总空白
+	char cmsgbuf[CMSG_SPACE(sizeof(fd))];
+	int *p_fds;
+	char sendchar = 0;
+	//CMSG_FIRSTHDR()宏这个宏用于返回一个指向附属数据缓冲区内的第一个附属对象的struct cmsghdr指针
+	//输入值为是指向struct msghdr结构的指针
+	p_cmsg = CMSG_FIRSTHDR(&msg_send);
+	p_cmsg->cmsg_level = SOL_SOCKET;//原始的协议级别
+	p_cmsg->cmsg_type = SCM_RIGHTS;//控制信息类型,SCM_RIGHTS表示附属数据对象是一个文件描述符
+	p_cmsg->cmsg_len = CMSG_LEN(sizeof(fd));//附属数据的字节计数
+	//CMSG_DATA()宏这个宏接受一个指向cmsghdr结构的指针
+	p_fds = (int*)CMSG_DATA(p_cmsg);
+	*p_fds = fd;
+
+	msg_send.msg_name = NULL;
+	msg_send.msg_namelen = 0;
+	msg_send.msg_iov = &vec;//io缓冲区的地址
+	msg_send.msg_iovlen = 1;
+	msg_send.msg_control = cmsgbuf;
+	msg_send.msg_controllen = sizeof(cmsgbuf);
+	msg_send.msg_flags = 0;
+
+	vec.iov_base = &sendchar;
+	vec.iov_len = sizeof(sendchar);
+
+	ret = sendmsg(sock_fd, &msg_send, 0);
+	if (ret != 1)
+		LCWFTPD_LOG(ERROR,"sendmsg");
+}
+
+/**
+ *recv_fd - 接收文件描述符
+ */
+int recv_fd(const int sock_fd)
+{
+	int ret;
+	struct msghdr msg;
+	char recvchar;
+	struct iovec vec;
+	int recv_fd;
+	char cmsgbuf[CMSG_SPACE(sizeof(recv_fd))];
+	struct cmsghdr *p_cmsg;
+	int *p_fd;
+	vec.iov_base = &recvchar;
+	vec.iov_len = sizeof(recvchar);
+	msg.msg_name = NULL;
+	msg.msg_namelen = 0;
+	msg.msg_iov = &vec;
+	msg.msg_iovlen = 1;
+	msg.msg_control = cmsgbuf;
+	msg.msg_controllen = sizeof(cmsgbuf);
+	msg.msg_flags = 0;
+
+	p_fd = (int*)CMSG_DATA(CMSG_FIRSTHDR(&msg));
+	*p_fd = -1;  
+	ret = recvmsg(sock_fd, &msg, 0);
+	if (ret != 1)
+		ERR_EXIT("recvmsg");
+
+	p_cmsg = CMSG_FIRSTHDR(&msg);
+	if (p_cmsg == NULL)
+		ERR_EXIT("no passed fd");
+
+
+	p_fd = (int*)CMSG_DATA(p_cmsg);
+	recv_fd = *p_fd;
+	if (recv_fd == -1)
+		ERR_EXIT("no passed fd");
+
+	return recv_fd;
+}

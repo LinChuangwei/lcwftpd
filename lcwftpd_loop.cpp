@@ -21,9 +21,9 @@ lcwftpd_loop::~lcwftpd_loop()
 /*
 typedef struct ftp_session
 { 
-    //控制连接
+   //控制连接
     uid_t uid;//用户id
-	  int ctrl_fd;//已连接套接字
+	int ctrl_fd;//已连接套接字
     char ip[16];//ip
     char cmdline[MAX_COMMAND_LINE];//命令行
     char cmd[MAX_COMMAND];//命令
@@ -32,9 +32,15 @@ typedef struct ftp_session
     struct sockaddr_in* port_addr;//到时要连接的地址
     int pasv_listen_fd;//被动模式套接字
     int data_fd;//数据套接字
+    
+    //父子进程通道
+    int parent_fd;
+    int child_fd;    
+
     //FTP协议状态
     int is_ascii;//是否是ascii码状态
     long long restart_pos;//用于后期的断点续传
+    char* rnfr_name;//重命名时用于保存文件名
 
 }session_t;
 */
@@ -59,8 +65,10 @@ void lcwftpd_loop::lcwftpd_init()
         0,-1,{0},{0},{0},{0},
         //数据连接
         NULL,-1,-1,
+        //父子进程通道
+   		-1,-1,
         //FTP协议状态	
-        -1,0
+        -1,0,NULL
 	};
 }	
 /**

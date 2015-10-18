@@ -608,14 +608,35 @@ void ftpproto::do_dele(session_t* sess)
 	ftp_reply(sess,FTP_DELEOK,"Delete operation successful.");
 }
 
+/**
+ *do_rnfr - 文件重命名，先发送的是rnfr，要重命名的文件名
+ *@sess:会话结构体
+ */
 void ftpproto::do_rnfr(session_t* sess)
-{
-
+{//保存要重命名的文件名
+	sess->rnfr_name = (char*)malloc(strlen(sess->arg) + 1);
+	memset(sess->rnfr_name,0,strlen(sess->arg) + 1);
+	memcpy(sess->rnfr_name,sess->arg,strlen(sess->arg) + 1);
+	ftp_reply(sess,FTP_RNFROK,"Ready for RNTO.");
 }
 
+/**
+ *do_rnto - 文件重命名，在rnfr后接收到，改后的文件名
+ *@sess:会话结构体
+ */
 void ftpproto::do_rnto(session_t* sess)
 {
-
+	if (sess->rnfr_name == NULL)
+	{
+		//之前没有收到过RNFR命令
+		ftp_reply(sess,FTP_NEEDRNFR,"RNFR required first.");
+		return;
+	}
+	//arg保存的是改后的文件名
+	rename(sess->rnfr_name,sess->arg);//重命名
+	ftp_reply(sess,FTP_RENAMEOK,"Rename successful.");
+	free(sess->rnfr_name);//释放内存
+	sess->rnfr_name = NULL;
 }
 
 void ftpproto::do_site(session_t* sess)
@@ -650,11 +671,33 @@ void ftpproto::do_feat(session_t* sess)
 	ftp_reply(sess,FTP_FEAT,"End\r\n");
 }
 
+/**
+ *do_size - 查看文件大小
+ *@sess:会话结构体
+ */
 void ftpproto::do_size(session_t* sess)
 {
-
+	struct stat buf;
+	if (stat(sess->arg,&buf) < 0)//获取状态失败
+	{
+		ftp_reply(sess,FTP_FILEFAIL,"SIZE operation failed.");
+		return;		 
+	}
+	//判定是不是一个文件
+	if (!S_ISREG(buf.st_mode))
+	{//不是一个普通的文件
+		 ftp_reply(sess,FTP_FILEFAIL,"Could not get file size.");
+		 return;
+	}
+	char text[1024] = {0};
+	sprintf(text,"%lld",(long long)buf.st_size);
+	ftp_reply(sess,FTP_SIZEOK,text);//应答文件的大小	
 }
 
+/**
+ *do_stat - 查看服务器的状态
+ *@sess:会话结构体
+ */
 void ftpproto::do_stat(session_t* sess)
 {
 
@@ -669,9 +712,26 @@ void ftpproto::do_noop(session_t* sess)
 	ftp_reply(sess,FTP_NOOPOK,"NOOP ok.");
 }
 
+/**
+ *do_help - 回复一些提示的信息
+ *@sess:会话结构体
+ */
 void ftpproto::do_help(session_t* sess)
 {
+	ftp_lreply(sess,FTP_HELP, "The following commands are recognized.");
+	lcw_systools.writen(sess->ctrl_fd, " ABOR ACCT ALLO APPE CDUP CWD  DELE EPRT EPSV FEAT HELP LIST MDTM MKD\r\n",
+		strlen(" ABOR ACCT ALLO APPE CDUP CWD  DELE EPRT EPSV FEAT HELP LIST MDTM MKD\r\n"));
 
+	lcw_systools.writen(sess->ctrl_fd, " MODE NLST NOOP OPTS PASS PASV PORT PWD  QUIT REIN REST RETR RMD  RNFR\r\n",
+		strlen(" MODE NLST NOOP OPTS PASS PASV PORT PWD  QUIT REIN REST RETR RMD  RNFR\r\n"));
+
+	lcw_systools.writen(sess->ctrl_fd, " RNTO SITE SIZE SMNT STAT STOR STOU STRU SYST TYPE USER XCUP XCWD XMKD\r\n",
+		strlen(" RNTO SITE SIZE SMNT STAT STOR STOU STRU SYST TYPE USER XCUP XCWD XMKD\r\n"));
+
+	lcw_systools.writen(sess->ctrl_fd, " XPWD XRMD\r\n",
+		strlen(" XPWD XRMDr\n"));
+
+	ftp_reply(sess,FTP_HELP, "Help OK.");
 }
 
 /**
